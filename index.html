@@ -61,6 +61,8 @@ main{flex:1;min-height:0;display:flex;flex-direction:column}
 .pill.need{background:rgba(239,83,80,.18);color:var(--q1)}.pill.want{background:rgba(79,140,255,.18);color:var(--q2)}
 .empty{color:var(--muted);font-size:13px;text-align:center;padding:16px 6px}
 .addq{border:0;background:none;color:var(--c);font-size:13px;padding:10px;border-top:1px solid var(--line);width:100%}
+.dsum{display:flex;justify-content:space-between;align-items:center;padding:0 4px 6px;color:var(--muted);font-size:13px}
+.dhead{font-size:12px;color:var(--muted);margin:8px 4px 6px;text-transform:uppercase;letter-spacing:.04em}
 .tcard{background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--c);border-radius:12px;padding:10px;margin-bottom:8px;display:flex;gap:10px;align-items:flex-start}
 #buy{flex:1;min-height:0;display:flex;flex-direction:column}
 .summary{padding:0 14px 8px;color:var(--muted);font-size:13px}
@@ -151,6 +153,18 @@ function banner(){
   b.append(h('span',{text:(ls(BK)?days+' days since your last backup.':'You have never backed up your data.')}),h('button',{text:'Back up',onclick:()=>{exportData()}}),h('button',{class:'x','aria-label':'Dismiss',text:'✕',onclick:()=>{ls(SN,Date.now());banner()}}));
 }
 function moveTask(t,q){t.q=q;save();render()}
+function setDone(t,v){t.done=v;t.doneAt=v?Date.now():0;save();render();if(v)toast('Task completed',()=>{t.done=false;t.doneAt=0})}
+function dayLabel(ts){if(!ts)return'Earlier';const d=new Date(ts),n=new Date(),k=ymd(d);if(k===ymd(n))return'Today';if(k===ymd(new Date(n.getTime()-864e5)))return'Yesterday';return fmtD(k)}
+function renderDone(g){
+  const list=state.tasks.filter(t=>t.done&&hit(t.title,t.note)).sort((a,b)=>(b.doneAt||0)-(a.doneAt||0));
+  if(!list.length){g.append(h('div',{class:'empty',text:qs?'No matches':'Nothing completed yet. Finished tasks will show up here.'}));return}
+  g.append(h('div',{class:'dsum'},h('span',{text:list.length+' completed'}),h('button',{class:'fchip',text:'Clear all',onclick:()=>{const old=state.tasks;state.tasks=old.filter(x=>!x.done);save();render();toast('Cleared',()=>{state.tasks=old})}})));
+  let last='';
+  for(const t of list){const k=dayLabel(t.doneAt);if(k!==last){g.append(h('div',{class:'dhead',text:k}));last=k}
+    g.append(h('div',{class:'tcard done','data-q':t.q},
+      h('button',{class:'chk','aria-label':'Restore task',text:'✓',onclick:()=>{t.done=false;t.doneAt=0;save();render();toast('Moved back to '+Q[t.q].name)}}),
+      h('div',{class:'t',onclick:()=>openTask(t)},t.title,h('div',{},h('span',{class:'pill',text:Q[t.q].name})))))}
+}
 function openMove(t){
   const pick=h('div',{class:'qpick'});
   for(const k of [1,2,3,4])pick.append(h('button',{class:k===t.q?'sel':'','data-q':k,onclick:()=>{closeSheet();moveTask(t,k)}},Q[k].name,h('small',{text:Q[k].sub})));
@@ -159,7 +173,7 @@ function openMove(t){
 function taskRow(t,showNote,showMove){
   const d=dueInfo(t);
   const row=h('div',{class:'task'+(t.done?' done':''),draggable:'true',ondragstart:e=>{dragId=t.id;try{e.dataTransfer.setData('text/plain',t.id)}catch(x){}}},
-    h('button',{class:'chk','aria-label':'Toggle done',text:t.done?'✓':'',onclick:e=>{e.stopPropagation();t.done=!t.done;save();render()}}),
+    h('button',{class:'chk','aria-label':'Toggle done',text:t.done?'✓':'',onclick:e=>{e.stopPropagation();setDone(t,!t.done)}}),
     h('div',{class:'t',onclick:()=>openTask(t)},t.title,t.note&&showNote?h('span',{class:'note',text:t.note}):null,d?h('span',{class:'pill '+d.c,text:d.x}):null),
     showMove?h('button',{class:'mv','aria-label':'Move to another quadrant',text:'⇄',onclick:e=>{e.stopPropagation();openMove(t)}}):null);
   return row;
@@ -168,24 +182,24 @@ function renderMatrix(){
   const g=$('#grid'),mb=$('#mbar'),today=ymd(new Date());
   const dueList=state.tasks.filter(t=>!t.done&&t.due&&t.due<=today&&hit(t.title,t.note));
   mb.innerHTML='';
-  for(const [k,l] of [['grid','Matrix'],['today','Today · '+state.tasks.filter(t=>!t.done&&t.due&&t.due<=today).length]])
+  for(const [k,l] of [['grid','Matrix'],['today','Today · '+state.tasks.filter(t=>!t.done&&t.due&&t.due<=today).length],['done','Done · '+state.tasks.filter(t=>t.done).length]])
     mb.append(h('button',{class:'fchip'+(mode===k?' on':''),text:l,onclick:()=>{mode=k;render()}}));
-  g.innerHTML='';g.classList.toggle('today',mode==='today');g.classList.toggle('focus',mode==='grid'&&!!focusQ);
-  if(mode==='today'){
+  g.innerHTML='';g.classList.toggle('today',mode!=='grid');g.classList.toggle('focus',mode==='grid'&&!!focusQ);
+  if(mode==='done'){renderDone(g)}else if(mode==='today'){
     if(!dueList.length)g.append(h('div',{class:'empty',text:qs?'No matches':'Nothing due today or overdue 🎉'}));
     dueList.sort(cmpTask).forEach(t=>{const d=dueInfo(t);
       g.append(h('div',{class:'tcard','data-q':t.q},
-        h('button',{class:'chk','aria-label':'Mark done',onclick:()=>{t.done=true;save();render()}}),
+        h('button',{class:'chk','aria-label':'Mark done',onclick:()=>setDone(t,true)}),
         h('div',{class:'t',onclick:()=>openTask(t)},t.title,h('div',{},h('span',{class:'pill',text:Q[t.q].name}),d?h('span',{class:'pill '+d.c,text:d.x}):null)),
         h('button',{class:'mv','aria-label':'Move',text:'⇄',onclick:()=>openMove(t)})))});
   }else for(const q of [1,2,3,4]){
-    const items=state.tasks.filter(t=>t.q===q&&hit(t.title,t.note)),open=items.filter(t=>!t.done);
+    const items=state.tasks.filter(t=>t.q===q&&!t.done&&hit(t.title,t.note)),open=items;
     const box=h('section',{class:'quad'+(focusQ===q?' focused':''),'data-q':q,
       ondragover:e=>{e.preventDefault();box.classList.add('over')},ondragleave:()=>box.classList.remove('over'),
       ondrop:e=>{e.preventDefault();box.classList.remove('over');const t=state.tasks.find(x=>x.id===dragId);dragId=null;if(t&&t.q!==q)moveTask(t,q)}});
     const hd=h('div',{class:'qh',onclick:()=>{focusQ=focusQ===q?null:q;render()}},h('div',{},h('b',{text:Q[q].name}),h('span',{text:Q[q].sub})),h('span',{class:'count',text:open.length}));
     const list=h('div',{class:'list'});
-    const shown=items.filter(t=>showDone||!t.done).sort(cmpTask);
+    const shown=items.sort(cmpTask);
     if(!shown.length)list.append(h('div',{class:'empty',text:qs?'No matches':focusQ?'Nothing here yet':'—'}));
     shown.forEach(t=>list.append(taskRow(t,!!focusQ,!!focusQ)));
     box.append(hd,list);
@@ -265,7 +279,7 @@ function buyText(){
 function openMenu(){
   const m=(label,fn)=>h('button',{class:'m',text:label,onclick:fn});
   const kids=[h('h2',{text:'Options'}),
-    m(showDone?'Hide completed':'Show completed',()=>{showDone=!showDone;closeSheet();render()}),
+    ...(view==='buy'?[m(showDone?'Hide completed':'Show completed',()=>{showDone=!showDone;closeSheet();render()})]:[]),
     m(view==='matrix'?'Clear completed tasks':'Clear bought items',()=>{
       const key=view==='matrix'?'tasks':'buys',old=state[key];state[key]=old.filter(x=>!x.done);save();closeSheet();render();
       if(old.length!==state[key].length)toast('Cleared',()=>{state[key]=old})})];
@@ -278,7 +292,7 @@ function exportData(){const a=h('a',{href:URL.createObjectURL(new Blob([JSON.str
 $('#file').onchange=async e=>{const f=e.target.files[0];e.target.value='';if(!f)return;
   try{const d=JSON.parse(await f.text());if(!Array.isArray(d.tasks)&&!Array.isArray(d.buys))throw 0;
     const s=x=>String(x||''),old=state;
-    state={tasks:(d.tasks||[]).filter(t=>t&&typeof t.title==='string'&&[1,2,3,4].includes(t.q)).map(t=>({id:t.id||uid(),title:s(t.title).slice(0,200),note:s(t.note).slice(0,300),due:/^\d{4}-\d\d-\d\d$/.test(t.due)?t.due:'',q:t.q,done:!!t.done,created:+t.created||Date.now()})),
+    state={tasks:(d.tasks||[]).filter(t=>t&&typeof t.title==='string'&&[1,2,3,4].includes(t.q)).map(t=>({id:t.id||uid(),title:s(t.title).slice(0,200),note:s(t.note).slice(0,300),due:/^\d{4}-\d\d-\d\d$/.test(t.due)?t.due:'',q:t.q,done:!!t.done,doneAt:+t.doneAt||0,created:+t.created||Date.now()})),
       buys:(d.buys||[]).filter(i=>i&&typeof i.name==='string').map(i=>({id:i.id||uid(),name:s(i.name).slice(0,200),list:LISTS[i.list]?i.list:'other',prio:PRIO[i.prio]?i.prio:'want',qty:Math.max(1,Math.floor(+i.qty)||1),price:i.price===''||isNaN(+i.price)?'':+i.price,link:s(i.link).slice(0,500),note:s(i.note).slice(0,300),done:!!i.done,doneAt:+i.doneAt||0,created:+i.created||Date.now()}))};
     save();closeSheet();render();toast('Backup imported',()=>{state=old})}catch(err){toast('That file is not a valid backup')}};
 
