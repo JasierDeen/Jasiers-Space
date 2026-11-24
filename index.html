@@ -116,7 +116,15 @@ body.sheet-open #sheet{transform:none}body.sheet-open #backdrop{display:block}
 .dpick button{border:2px solid var(--line);background:var(--bg);color:var(--text);border-radius:10px;padding:10px 0;font-size:12px}
 .dpick button.sel{border-color:var(--q2);background:rgba(79,140,255,.18)}
 .qk{background:var(--bg);color:var(--text);border:1px solid var(--line)!important}
-.seg.s4{grid-template-columns:repeat(4,1fr)}
+.seg.s4{grid-template-columns:repeat(4,1fr)}.seg.s2{grid-template-columns:1fr 1fr}
+.cal-h{display:flex;align-items:center;justify-content:space-between;padding:0 2px 8px}.cal-h b{font-size:16px}
+.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.cw{text-align:center;font-size:11px;color:var(--muted);padding-bottom:2px}
+.cd{position:relative;height:46px;border-radius:10px;border:1px solid var(--line);background:var(--panel);color:var(--text);font-size:14px;padding:4px 0 0;display:flex;flex-direction:column;align-items:center;gap:3px}
+.cd.out{visibility:hidden}.cd.today{box-shadow:0 0 0 2px var(--q3)}.cd.sel{background:var(--q2);border-color:var(--q2);color:#fff}
+.dots{display:flex;gap:3px;height:6px}.dot{width:6px;height:6px;border-radius:50%;background:var(--c)}.cd.sel .dot{box-shadow:0 0 0 1px #fff}
+.mh{display:flex;justify-content:space-between;align-items:baseline}.mh b{color:var(--text);font-size:13px;text-transform:none;letter-spacing:0}
+.tri{background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:10px;margin:0 0 10px}
 .srow{display:flex;align-items:center;gap:8px;padding:5px 0;font-size:15px}
 .srow span{flex:1;word-break:break-word}
 .srow.done span{text-decoration:line-through;color:var(--muted)}
@@ -155,8 +163,9 @@ const LISTS={cart:'Amazon cart',wish:'Wish list',other:'Other'};
 const PRIO={need:'Need',want:'Want',someday:'Someday'},PR={need:0,want:1,someday:2};
 const SORTS={new:'Newest',prio:'Priority',price:'Price'};
 const KEY='eisenhower-matrix-v1',BK='space-last-backup',FU='space-first-use',SN='space-snooze';
+function ymd0(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
 const VIEWS=['matrix','routines','buy','review'];const fromHash=()=>{const x=location.hash.slice(1);return VIEWS.includes(x)?x:'matrix'};
-let state=load(),view=fromHash(),rvOff=0,mode='grid',focusQ=null,showDone=true,filter='all',sort='new',qs='',dragId=null;
+let calM=new Date(new Date().getFullYear(),new Date().getMonth(),1),calSel=ymd0(new Date()),state=load(),view=fromHash(),rvOff=0,mode='grid',focusQ=null,showDone=true,filter='all',sort='new',qs='',dragId=null;
 function load(){try{const s=JSON.parse(localStorage.getItem(KEY));if(s&&Array.isArray(s.tasks))return{tasks:s.tasks,buys:Array.isArray(s.buys)?s.buys:[],routines:Array.isArray(s.routines)?s.routines:[]}}catch(e){}return{tasks:[],buys:[],routines:[]}}
 function save(){try{localStorage.setItem(KEY,JSON.stringify(state))}catch(e){}}
 const TH='space-theme',HP='space-haptics';
@@ -240,14 +249,37 @@ function taskRow(t,showNote,showMove){
     showMove?h('button',{class:'mv','aria-label':'Move to another quadrant',text:'⇄',onclick:e=>{e.stopPropagation();openMove(t)}}):null);
   return row;
 }
+function renderCal(g){
+  const y=calM.getFullYear(),m=calM.getMonth(),today=ymd(new Date()),lead=(new Date(y,m,1).getDay()+6)%7,dim=new Date(y,m+1,0).getDate();
+  const by={};state.tasks.filter(t=>!t.done&&t.due&&hit(t.title,t.note)).forEach(t=>(by[t.due]=by[t.due]||[]).push(t));
+  const nav=d=>{calM=new Date(y,m+d,1);const t=new Date();calSel=(calM.getFullYear()===t.getFullYear()&&calM.getMonth()===t.getMonth())?ymd(t):ymd(calM);render()};
+  g.append(h('div',{class:'cal-h'},h('button',{class:'icon-btn','aria-label':'Previous month',text:'‹',onclick:()=>nav(-1)}),
+    h('b',{text:calM.toLocaleDateString('en-IN',{month:'long',year:'numeric'})}),
+    h('button',{class:'icon-btn','aria-label':'Next month',text:'›',onclick:()=>nav(1)})));
+  const grid=h('div',{class:'cal'});
+  'MTWTFSS'.split('').forEach(c=>grid.append(h('div',{class:'cw',text:c})));
+  for(let i=0;i<lead;i++)grid.append(h('span',{class:'cd out'}));
+  for(let d=1;d<=dim;d++){const k=ymd(new Date(y,m,d)),ts=by[k]||[];
+    grid.append(h('button',{class:'cd'+(k===today?' today':'')+(k===calSel?' sel':''),'aria-label':fmtD(k)+(ts.length?', '+ts.length+' tasks':''),onclick:()=>{calSel=k;render()}},
+      String(d),h('span',{class:'dots'},...ts.slice(0,3).map(t=>h('i',{class:'dot','data-q':t.q})))))}
+  g.append(grid);
+  const day=(by[calSel]||[]).sort(cmpTask);
+  g.append(h('div',{class:'dhead',text:(calSel===today?'Today · ':'')+fmtD(calSel)+' · '+day.length+(day.length===1?' task':' tasks')}));
+  if(!day.length)g.append(h('div',{class:'empty',text:qs?'No matches':'Nothing due this day'}));
+  day.forEach(t=>g.append(h('div',{class:'tcard','data-q':t.q},
+    h('button',{class:'chk','aria-label':'Mark done',onclick:e=>setDone(t,true,e.currentTarget.closest('.tcard'))}),
+    h('div',{class:'t',onclick:()=>openTask(t)},t.title,h('div',{},h('span',{class:'pill',text:Q[t.q].name}),...metaPills(t))),
+    h('button',{class:'mv','aria-label':'Move',text:'⇄',onclick:()=>openMove(t)}))));
+  g.append(h('button',{class:'addq',style:'--c:var(--q2)',text:'+ Add task on '+fmtD(calSel),onclick:()=>openTask(null,null,calSel)}));
+}
 function renderMatrix(){
   const g=$('#grid'),mb=$('#mbar'),today=ymd(new Date());
   const dueList=state.tasks.filter(t=>!t.done&&t.due&&t.due<=today&&hit(t.title,t.note));
   mb.innerHTML='';
-  for(const [k,l] of [['grid','Matrix'],['today','Today · '+state.tasks.filter(t=>!t.done&&t.due&&t.due<=today).length],['done','Done · '+state.tasks.filter(t=>t.done).length]])
+  for(const [k,l] of [['grid','Matrix'],['today','Today · '+state.tasks.filter(t=>!t.done&&t.due&&t.due<=today).length],['cal','Calendar'],['done','Done · '+state.tasks.filter(t=>t.done).length]])
     mb.append(h('button',{class:'fchip'+(mode===k?' on':''),text:l,onclick:()=>{mode=k;render()}}));
   g.innerHTML='';g.classList.toggle('today',mode!=='grid');g.classList.toggle('focus',mode==='grid'&&!!focusQ);
-  if(mode==='done'){renderDone(g)}else if(mode==='today'){
+  if(mode==='done'){renderDone(g)}else if(mode==='cal'){renderCal(g)}else if(mode==='today'){
     if(!dueList.length)g.append(h('div',{class:'empty',text:qs?'No matches':'Nothing due today or overdue 🎉'}));
     dueList.sort(cmpTask).forEach(t=>{const d=dueInfo(t);
       g.append(h('div',{class:'tcard','data-q':t.q},
@@ -271,14 +303,35 @@ function renderMatrix(){
   const o=state.tasks.filter(t=>!t.done),late=o.filter(t=>dueInfo(t)?.c==='late').length;
   $('#sub').textContent=o.length+' open'+(late?' · '+late+' overdue':'')+' · '+(state.tasks.length-o.length)+' done';
 }
+function renderBought(b,chips){
+  const items=state.buys.filter(i=>i.done&&hit(i.name,i.note,i.link)).sort((a,c)=>(c.doneAt||0)-(a.doneAt||0));
+  const mk=i=>i.doneAt?new Date(i.doneAt).toLocaleDateString('en-IN',{month:'long',year:'numeric'}):'Earlier';
+  const list=h('div',{class:'blist'});
+  if(!items.length)list.append(h('div',{class:'empty',text:qs?'No matches':'Nothing bought yet. Tick an item in your list and it will move here.'}));
+  let last=null,head=null,sum=0;
+  const fin=()=>{if(head){head.append(h('b',{text:money(sum)}))}};
+  for(const i of items){const k=mk(i);
+    if(k!==last){fin();sum=0;last=k;head=h('div',{class:'dhead mh'},h('span',{text:k}));list.append(head)}
+    sum+=lineTotal(i);const q=+i.qty||1;
+    list.append(h('div',{class:'card done'},
+      h('button',{class:'chk','aria-label':'Move back to list',text:'✓',onclick:()=>{i.done=false;i.doneAt=0;save();render();toast('Moved back to '+LISTS[i.list])}}),
+      h('div',{class:'t',onclick:()=>openBuy(i)},i.name,h('div',{},h('span',{class:'tag '+i.list,text:LISTS[i.list]}),h('span',{class:'pill',text:i.doneAt?'Bought '+dayLabel(i.doneAt):'Bought'})),i.note?h('span',{class:'note',text:i.note}):null),
+      i.price?h('div',{class:'price',text:money(lineTotal(i))},q>1?h('small',{text:money(+i.price)+' × '+q}):null):null))}
+  fin();
+  const all=items.reduce((a,i)=>a+lineTotal(i),0);
+  b.append(chips,h('div',{class:'summary'},items.length+' bought · ',h('b',{text:money(all)})),list);
+  $('#sub').textContent=state.buys.filter(i=>!i.done).length+' to buy · '+state.buys.filter(i=>i.done).length+' bought';
+}
 function renderBuy(){
   const b=$('#buy');b.innerHTML='';
   const cnt=k=>state.buys.filter(i=>!i.done&&(k==='all'||i.list===k)).length;
   const chips=h('div',{class:'chips'});
   for(const k of ['all','cart','wish','other'])chips.append(h('button',{class:'fchip'+(filter===k?' on':''),text:(k==='all'?'All':k==='cart'?'Cart':k==='wish'?'Wish':'Other')+' '+cnt(k),onclick:()=>{filter=k;render()}}));
-  chips.append(h('button',{class:'fchip',text:'↕ '+SORTS[sort],onclick:()=>{const k=Object.keys(SORTS);sort=k[(k.indexOf(sort)+1)%k.length];render()}}));
+  chips.append(h('button',{class:'fchip'+(filter==='bought'?' on':''),text:'Bought '+state.buys.filter(i=>i.done).length,onclick:()=>{filter='bought';render()}}));
+  if(filter!=='bought')chips.append(h('button',{class:'fchip',text:'↕ '+SORTS[sort],onclick:()=>{const k=Object.keys(SORTS);sort=k[(k.indexOf(sort)+1)%k.length];render()}}));
+  if(filter==='bought'){renderBought(b,chips);return}
   const cmp={new:(a,c)=>c.created-a.created,prio:(a,c)=>(PR[a.prio]??1)-(PR[c.prio]??1)||c.created-a.created,price:(a,c)=>lineTotal(a)-lineTotal(c)}[sort];
-  const items=state.buys.filter(i=>(filter==='all'||i.list===filter)&&(showDone||!i.done)&&hit(i.name,i.note,i.link)).sort((a,c)=>a.done-c.done||cmp(a,c));
+  const items=state.buys.filter(i=>(filter==='all'||i.list===filter)&&!i.done&&hit(i.name,i.note,i.link)).sort((a,c)=>a.done-c.done||cmp(a,c));
   const pend=items.filter(i=>!i.done),tot=pend.reduce((s,i)=>s+lineTotal(i),0);
   const ms=new Date();ms.setDate(1);ms.setHours(0,0,0,0);
   const spent=state.buys.filter(i=>i.done&&i.doneAt>=ms.getTime()).reduce((s,i)=>s+lineTotal(i),0);
@@ -287,7 +340,7 @@ function renderBuy(){
   if(!items.length)list.append(h('div',{class:'empty',text:qs?'No matches':'Nothing here yet. Tap + to add an item.'}));
   for(const i of items){const u=safeUrl(i.link),q=+i.qty||1;
     list.append(h('div',{class:'card'+(i.done?' done':'')},
-      h('button',{class:'chk','aria-label':'Mark bought',text:i.done?'✓':'',onclick:()=>{i.done=!i.done;i.doneAt=i.done?Date.now():0;save();render()}}),
+      h('button',{class:'chk','aria-label':'Mark bought',text:i.done?'✓':'',onclick:()=>{i.done=true;i.doneAt=Date.now();buzz(15);save();render();toast('Moved to Bought',()=>{i.done=false;i.doneAt=0})}}),
       h('div',{class:'t',onclick:()=>openBuy(i)},i.name,h('div',{},h('span',{class:'tag '+i.list,text:LISTS[i.list]}),i.prio&&i.prio!=='want'?h('span',{class:'pill '+i.prio,text:PRIO[i.prio]}):null,u?h('a',{href:u,target:'_blank',rel:'noopener noreferrer',text:'Open ↗ '+host(u),onclick:e=>e.stopPropagation()}):null),i.note?h('span',{class:'note',text:i.note}):null),
       i.price?h('div',{class:'price',text:money(lineTotal(i))},q>1?h('small',{text:money(+i.price)+' × '+q}):null):null));}
   b.append(chips,sum,list);
@@ -298,13 +351,18 @@ function renderBuy(){
 function sheetOpen(...kids){const s=$('#sheet');s.innerHTML='';s.append(...kids);document.body.classList.add('sheet-open')}
 function closeSheet(){document.body.classList.remove('sheet-open')}
 function seg(opts,cur,on,cls){const bs={},w=h('div',{class:cls||'seg'});for(const k in opts){bs[k]=h('button',{class:k===cur?'sel':'',text:opts[k],onclick:()=>{for(const x in bs)bs[x].classList.toggle('sel',x===k);on(k)}});w.append(bs[k])}return w}
-function openTask(task,presetQ){
+function openTask(task,presetQ,presetDue){
   let q=task?task.q:(presetQ||focusQ||1);
   const title=h('input',{class:'in',id:'ti',placeholder:'What needs doing?',maxlength:200,value:task?task.title:''});
   const note=h('input',{class:'in',placeholder:'Note (optional)',maxlength:300,value:task?.note||''});
-  const due=h('input',{class:'in',type:'date',value:task?.due||''});
+  const due=h('input',{class:'in',type:'date',value:task?.due||presetDue||''});
   const btns={},pick=h('div',{class:'qpick'});
   for(const k of [1,2,3,4]){btns[k]=h('button',{class:k===q?'sel':'','data-q':k,onclick:()=>{q=k;for(const x in btns)btns[x].classList.toggle('sel',+x===q)}},Q[k].name,h('small',{text:Q[k].sub}));pick.append(btns[k])}
+  let ur=null,im=null;
+  const triRes=h('p',{class:'hint'});
+  const applyTri=()=>{if(ur===null||im===null)return;q=ur?(im?1:3):(im?2:4);for(const x in btns)btns[x].classList.toggle('sel',+x===q);triRes.textContent='→ '+Q[q].name+' ('+Q[q].sub+'). You can still change it below.'};
+  const triBox=h('div',{class:'tri',hidden:''},h('div',{class:'lbl',text:'Does it need action in the next day or two?'}),seg({y:'Yes, urgent',n:'No, can wait'},null,k=>{ur=k==='y';applyTri()},'seg s2'),h('div',{class:'lbl',text:'Does it matter for your goals or people you care about?'}),seg({y:'Yes, important',n:'Not really'},null,k=>{im=k==='y';applyTri()},'seg s2'),triRes);
+  const triBtn=h('button',{class:'fchip',style:'margin-bottom:8px',text:'🧭 Not sure where it goes?',onclick:()=>{triBox.hidden=!triBox.hidden}});
   let rep=task?.rep||'';
   const subs=(task?.subs||[]).map(x=>({...x})),subBox=h('div');
   const drawSubs=()=>{subBox.innerHTML='';subs.forEach((x,i)=>subBox.append(h('div',{class:'srow'+(x.d?' done':'')},h('button',{class:'schk','aria-label':'Toggle subtask',text:x.d?'✓':'',onclick:()=>{x.d=!x.d;drawSubs()}}),h('span',{text:x.t}),h('button',{class:'sx','aria-label':'Remove subtask',text:'✕',onclick:()=>{subs.splice(i,1);drawSubs()}}))))};
@@ -319,11 +377,11 @@ function openTask(task,presetQ){
   const row=h('div',{class:'row'});
   if(task)row.append(h('button',{class:'del',text:'Delete',onclick:()=>{const i=state.tasks.indexOf(task);state.tasks.splice(i,1);save();closeSheet();render();toast('Task deleted',()=>state.tasks.splice(i,0,task))}}));
   row.append(h('button',{class:'save',text:'Save',onclick:commit}));
-  sheetOpen(h('h2',{text:task?'Edit task':'New task'}),title,note,h('div',{class:'lbl',text:'Due date (optional)'}),due,pick,h('div',{class:'lbl',text:'Repeat (needs a due date to anchor, otherwise starts from today)'}),seg({'':'Never',daily:'Daily',weekly:'Weekly',monthly:'Monthly'},rep,k=>rep=k,'seg s4'),h('div',{class:'lbl',text:'Subtasks'}),subBox,subIn,row);
+  sheetOpen(h('h2',{text:task?'Edit task':'New task'}),title,note,h('div',{class:'lbl',text:'Due date (optional)'}),due,triBtn,triBox,pick,h('div',{class:'lbl',text:'Repeat (needs a due date to anchor, otherwise starts from today)'}),seg({'':'Never',daily:'Daily',weekly:'Weekly',monthly:'Monthly'},rep,k=>rep=k,'seg s4'),h('div',{class:'lbl',text:'Subtasks'}),subBox,subIn,row);
   setTimeout(()=>title.focus(),150);
 }
 function openBuy(item){
-  let list=item?item.list:(filter==='all'?'cart':filter),prio=item?.prio||'want';
+  let list=item?item.list:(filter==='all'||filter==='bought'?'cart':filter),prio=item?.prio||'want';
   const name=h('input',{class:'in',placeholder:'Item name',maxlength:200,value:item?item.name:''});
   const price=h('input',{class:'in',type:'number',inputmode:'decimal',min:'0',step:'any',placeholder:'Price ₹ (each)',value:item?.price||''});
   const qty=h('input',{class:'in',type:'number',inputmode:'numeric',min:'1',step:'1',placeholder:'Qty',value:item?.qty||1});
@@ -402,12 +460,47 @@ function renderReview(){
   c.append(h('div',{class:'tip',text:tip}));
   if(rvOff===0){const od=state.tasks.filter(t=>!t.done&&dueInfo(t)?.c==='late').length;c.append(h('div',{class:'sec',text:'Right now'}),h('div',{class:'note',text:state.tasks.filter(t=>!t.done).length+' open tasks · '+od+' overdue'}))}
 }
+const RM='space-rem',RL='space-rem-last';
+const rem=()=>{try{return{on:false,time:'09:00',...JSON.parse(localStorage.getItem(RM))}}catch(e){return{on:false,time:'09:00'}}};
+const setRem=r=>{try{localStorage.setItem(RM,JSON.stringify(r))}catch(e){}};
+const canNotify=()=>'Notification' in window;
+const fmtT=t=>{const [a,b]=t.split(':').map(Number);return (a%12||12)+':'+String(b).padStart(2,'0')+' '+(a<12?'AM':'PM')};
+async function notify(title,body){
+  try{const reg=navigator.serviceWorker&&await navigator.serviceWorker.getRegistration();
+    if(reg&&reg.showNotification){await reg.showNotification(title,{body,icon:'icon-192.png',badge:'icon-192.png',tag:'space-due'});return true}
+    new Notification(title,{body,icon:'icon-192.png'});return true}catch(e){return false}}
+function dueSummary(){const k=ymd(new Date()),d=state.tasks.filter(x=>!x.done&&x.due&&x.due<=k),late=d.filter(x=>x.due<k).length,td=d.length-late;
+  const parts=[];if(td)parts.push(td+' due today');if(late)parts.push(late+' overdue');
+  return{n:d.length,title:parts.join(' · '),body:d.sort(cmpTask).slice(0,3).map(x=>'• '+x.title).join('\n')+(d.length>3?'\n+'+(d.length-3)+' more':'')}}
+function checkRem(){
+  const r=rem();if(!r.on||!canNotify()||Notification.permission!=='granted')return;
+  const n=new Date(),k=ymd(n),[hh,mm]=r.time.split(':').map(Number);
+  if(n.getHours()*60+n.getMinutes()<hh*60+mm||getLS(RL)===k)return;
+  const s=dueSummary();if(!s.n)return;
+  try{localStorage.setItem(RL,k)}catch(e){}
+  notify(s.title,s.body)}
+async function askPerm(){if(!canNotify()){toast('This browser does not support notifications');return false}
+  if(Notification.permission==='granted')return true;
+  if(Notification.permission==='denied'){toast('Notifications are blocked. Allow them in your browser or phone settings.');return false}
+  try{return(await Notification.requestPermission())==='granted'}catch(e){return false}}
+function openReminders(){
+  const r=rem();let on=r.on;
+  const time=h('input',{class:'in',type:'time',value:r.time});
+  const st=h('p',{class:'hint'});
+  const upd=()=>{st.textContent=!canNotify()?'This browser does not support notifications.':Notification.permission==='denied'?'Notifications are blocked for this site. Allow them in your browser or phone settings.':'Sends a summary of tasks due today and overdue, once a day, if there are any.'};upd();
+  const save=h('button',{class:'save',text:'Save',onclick:async()=>{
+    if(on&&!(await askPerm())){on=false;if(canNotify()&&Notification.permission==='default')toast('Reminders stay off');return}
+    setRem({on,time:time.value||'09:00'});try{localStorage.removeItem(RL)}catch(e){}closeSheet();toast(on?'Daily reminder at '+fmtT(time.value||'09:00'):'Reminders off');checkRem()}});
+  sheetOpen(h('h2',{text:'Daily reminder'}),seg({on:'On',off:'Off'},on?'on':'off',k=>on=k==='on','seg s2'),h('div',{class:'lbl',text:'Time'}),time,st,
+    h('div',{class:'row'},h('button',{class:'qk',text:'Send test',onclick:async()=>{if(await askPerm()){const s=dueSummary();const ok=await notify(s.n?s.title:'Jasier\'s Space',s.n?s.body:'Test reminder. Nothing is due right now.');toast(ok?'Test sent':'Could not show a notification');upd()}}}),save),
+    h('p',{class:'hint',text:'The reminder is delivered when the app is open or running in the background after your chosen time. A fully closed app cannot wake itself without a push server, and iPhone only allows notifications for apps added to the Home Screen (iOS 16.4+).'}));
+}
 function openMenu(){
   const m=(label,fn)=>h('button',{class:'m',text:label,onclick:fn});
   const kids=[h('h2',{text:'Options'}),
     m('Theme: '+{auto:'Auto',light:'Light',dark:'Dark'}[theme()],()=>{const o=['auto','light','dark'];try{localStorage.setItem(TH,o[(o.indexOf(theme())+1)%3])}catch(e){}applyTheme();openMenu()}),
+    m('Reminders: '+(rem().on?'Daily '+fmtT(rem().time):'Off'),openReminders),
     m('Haptics: '+(getLS(HP)==='off'?'Off':'On'),()=>{try{localStorage.setItem(HP,getLS(HP)==='off'?'on':'off')}catch(e){}buzz(20);openMenu()}),
-    ...(view==='buy'?[m(showDone?'Hide completed':'Show completed',()=>{showDone=!showDone;closeSheet();render()})]:[]),
     ...((view==='matrix'||view==='buy')?[m(view==='matrix'?'Clear completed tasks':'Clear bought items',()=>{
       const key=view==='matrix'?'tasks':'buys',old=state[key];state[key]=old.filter(x=>!x.done);save();closeSheet();render();
       if(old.length!==state[key].length)toast('Cleared',()=>{state[key]=old})})]:[])];
@@ -427,13 +520,13 @@ $('#file').onchange=async e=>{const f=e.target.files[0];e.target.value='';if(!f)
 
 function go(v){view=v;qs='';$('#sIn').value='';history.replaceState(null,'','#'+v);render();const el=$('#'+({matrix:'grid',routines:'routines',buy:'buy',review:'review'})[v]);if(el&&!calm()){el.classList.remove('vin');void el.offsetWidth;el.classList.add('vin')}}
 VIEWS.forEach(k=>$('#n-'+k).onclick=()=>go(k));
-$('#fab').onclick=()=>view==='matrix'?openTask(null):view==='routines'?openRoutine(null):openBuy(null);
+$('#fab').onclick=()=>view==='matrix'?openTask(null,null,mode==='cal'?calSel:''):view==='routines'?openRoutine(null):openBuy(null);
 $('#menuBtn').onclick=openMenu;$('#backdrop').onclick=closeSheet;
 $('#sBtn').onclick=()=>{const b=$('#sbar');b.hidden=!b.hidden;$('#sBtn').classList.toggle('on',!b.hidden);if(b.hidden){qs='';$('#sIn').value='';render()}else $('#sIn').focus()};
 $('#sIn').oninput=e=>{qs=e.target.value.trim().toLowerCase();render()};
 addEventListener('keydown',e=>{if(e.key==='Escape')closeSheet()});
 addEventListener('hashchange',()=>{view=fromHash();render()});
-render();
+render();checkRem();setInterval(checkRem,60000);document.addEventListener('visibilitychange',()=>{if(!document.hidden)checkRem()});
 if('serviceWorker' in navigator&&location.protocol!=='file:')navigator.serviceWorker.register('sw.js').catch(()=>{});
 </script>
 </body>

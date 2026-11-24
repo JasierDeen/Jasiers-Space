@@ -1,4 +1,4 @@
-const CACHE = 'space-v5';
+const CACHE = 'space-v6';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon.svg', './apple-touch-icon.png'];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));
@@ -15,4 +15,11 @@ self.addEventListener('fetch', e => {
       return res;
     }).catch(() => caches.match(e.request).then(hit => hit || caches.match('./index.html')))
   );
+});
+self.addEventListener('notificationclick', e => {
+  e.notification.close();
+  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(cs => {
+    for (const c of cs) { if ('focus' in c) return c.focus(); }
+    return self.clients.openWindow('./#matrix');
+  }));
 });
